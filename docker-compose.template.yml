@@ -1,0 +1,377 @@
+version: '3.5'
+
+services:
+  nginx:
+    image: nginx:latest
+    restart: always
+    volumes:
+      - ./config/nginx/nginx.conf:/etc/nginx/nginx.conf
+      - ./config/nginx/proxy.conf:/etc/nginx/proxy.conf
+      - ./config/nginx/server.crt:/etc/nginx/server.crt
+      - ./config/nginx/server.key:/etc/nginx/server.key
+      - ./config/nginx/json_log:/etc/nginx/conf.d/json_log
+    ports:
+      - 80:80
+      - 443:443
+      - 43492:43492
+      - 43493:43493
+      - 53493:53493
+      - 53492:53492
+    deploy:
+      resources:
+        limits:
+          cpus: '0.1'
+          memory: $NGINX_CONTAINER_MEM
+    env_file:
+      - ./.env.workflow-manager.$PRODUCTION_ENV
+    labels:
+      com.centurylinklabs.watchtower.enable: false
+      service.name: 'nginx'
+    logging:
+      driver: "json-file"
+      options:
+        max-file: '5'
+        max-size: '10m'
+
+  client-hl7-listener-metadata:
+    image: index.docker.io/timpwbaker/hexarad_workflow_manager:$PRODUCTION_ENV
+    command: 'bundle exec rake hl7:order_metadata_listener'
+    restart: always
+    deploy:
+      resources:
+        limits:
+          cpus: $WEB_CONTAINER_CPU
+          memory: $RAILS_CONTAINER_MEM
+    expose:
+      - "43493"
+    labels:
+      service.name: 'client-hl7-listener-metadata'
+    env_file:
+      - ./.env.workflow-manager.$PRODUCTION_ENV
+    logging:
+      driver: "json-file"
+      options:
+        max-file: '5'
+        max-size: '10m'
+
+  client-hl7-listener-zed:
+    image: index.docker.io/timpwbaker/hexarad_workflow_manager:$PRODUCTION_ENV
+    command: 'bundle exec rake hl7:zed_ris_updates_listener'
+    restart: always
+    deploy:
+      resources:
+        limits:
+          cpus: $WEB_CONTAINER_CPU
+          memory: $RAILS_CONTAINER_MEM
+    expose:
+      - "43493"
+    labels:
+      service.name: 'client-hl7-listener-zed'
+    env_file:
+      - ./.env.workflow-manager.$PRODUCTION_ENV
+    logging:
+      driver: "json-file"
+      options:
+        max-file: '5'
+        max-size: '10m'
+
+  client-hl7-listener-routine:
+    image: index.docker.io/timpwbaker/hexarad_workflow_manager:$PRODUCTION_ENV
+    command: 'bundle exec rake hl7:routine_intelerad_listener'
+    restart: always
+    deploy:
+      resources:
+        limits:
+          cpus: $WEB_CONTAINER_CPU
+          memory: $RAILS_CONTAINER_MEM
+    expose:
+      - "53492"
+    labels:
+      service.name: 'client-hl7-listener-routine'
+    env_file:
+      - ./.env.workflow-manager.$PRODUCTION_ENV
+    logging:
+      driver: "json-file"
+      options:
+        max-file: '5'
+        max-size: '10m'
+
+  client-hl7-listener-oncall:
+    image: index.docker.io/timpwbaker/hexarad_workflow_manager:$PRODUCTION_ENV
+    command: 'bundle exec rake hl7:oncall_intelerad_listener'
+    restart: always
+    deploy:
+      resources:
+        limits:
+          cpus: $WEB_CONTAINER_CPU
+          memory: $RAILS_CONTAINER_MEM
+    expose:
+      - "53493"
+    labels:
+      service.name: 'client-hl7-listener-oncall'
+    env_file:
+      - ./.env.workflow-manager.$PRODUCTION_ENV
+    logging:
+      driver: "json-file"
+      options:
+        max-file: '5'
+        max-size: '10m'
+
+  bi-db:
+    image: postgres:14.2-alpine
+    restart: always
+    volumes:
+      - ./bi-data:/var/lib/postgresql/data
+      - ./config/postgres/server.crt:/var/lib/postgresql/server.crt:ro
+      - ./config/postgres/server.key:/var/lib/postgresql/server.key:ro
+    environment:
+      POSTGRES_PASSWORD: eaf7fff2-6d2c-4f5f-b0ba-7328b2082d85
+    command: postgres -c ssl=on -c ssl_cert_file=/var/lib/postgresql/server.crt -c ssl_key_file=/var/lib/postgresql/server.key
+    ports:
+      - 44300:5432
+
+  fluent:
+    build:
+      context: .
+      dockerfile: fluentd.Dockerfile
+    restart: always
+    deploy:
+      resources:
+        limits:
+          cpus: '0.1'
+          memory: $FLUENT_CONTAINER_MEM
+    volumes:
+      - ./config/fluentd:/fluentd/etc
+    expose:
+      - "1514/udp"
+      - "24224"
+    env_file:
+      - ./.env.workflow-manager.$PRODUCTION_ENV
+    labels:
+      com.centurylinklabs.watchtower.enable: false
+      service.name: 'fluent'
+    logging:
+      driver: "json-file"
+      options:
+        max-file: '5'
+        max-size: '10m'
+
+  sidekiq:
+    image: index.docker.io/timpwbaker/hexarad_workflow_manager:$PRODUCTION_ENV
+    command: 'bundle exec sidekiq -c 3 -q default'
+    restart: always
+    deploy:
+      resources:
+        limits:
+          cpus: $WORKER_CONTAINER_CPU
+          memory: $RAILS_CONTAINER_MEM
+    env_file:
+      - ./.env.workflow-manager.$PRODUCTION_ENV
+    labels:
+      service.name: 'sidekiq'
+    logging:
+      driver: "json-file"
+      options:
+        max-file: '5'
+        max-size: '10m'
+
+  sidekiq_zed_ris:
+    image: index.docker.io/timpwbaker/hexarad_workflow_manager:$PRODUCTION_ENV
+    command: 'bundle exec sidekiq -c 2 -q vpn_only'
+    restart: always
+    deploy:
+      resources:
+        limits:
+          cpus: $WORKER_CONTAINER_CPU
+          memory: $RAILS_CONTAINER_MEM
+    env_file:
+      - ./.env.workflow-manager.$PRODUCTION_ENV
+    labels:
+      service.name: 'sidekiq'
+    logging:
+      driver: "json-file"
+      options:
+        max-file: '5'
+        max-size: '10m'
+
+  api_1:
+    image: index.docker.io/timpwbaker/hexarad_workflow_manager:$PRODUCTION_ENV
+    command: 'bundle exec rails s -b 0.0.0.0'
+    restart: always
+    deploy:
+      resources:
+        limits:
+          cpus: $WEB_CONTAINER_CPU
+          memory: $RAILS_CONTAINER_MEM
+    expose:
+      - "3000"
+    labels:
+      service.name: 'web'
+      com.centurylinklabs.watchtower.lifecycle.post-update: './bin/sleep_20s.sh'
+    env_file:
+      - ./.env.workflow-manager.$PRODUCTION_ENV
+    logging:
+      driver: "json-file"
+      options:
+        max-file: '5'
+        max-size: '10m'
+
+  api_2:
+    image: index.docker.io/timpwbaker/hexarad_workflow_manager:$PRODUCTION_ENV
+    command: 'bundle exec rails s -b 0.0.0.0'
+    restart: always
+    deploy:
+      resources:
+        limits:
+          cpus: $WEB_CONTAINER_CPU
+          memory: $RAILS_CONTAINER_MEM
+    expose:
+      - "3000"
+    labels:
+      service.name: 'web'
+      com.centurylinklabs.watchtower.lifecycle.post-update: './bin/sleep_20s.sh'
+    env_file:
+      - ./.env.workflow-manager.$PRODUCTION_ENV
+    logging:
+      driver: "json-file"
+      options:
+        max-file: '5'
+        max-size: '10m'
+
+  web_1:
+    image: index.docker.io/timpwbaker/hexarad_workflow_manager:$PRODUCTION_ENV
+    command: 'bundle exec rails s -b 0.0.0.0'
+    restart: always
+    deploy:
+      resources:
+        limits:
+          cpus: $WEB_CONTAINER_CPU
+          memory: $RAILS_CONTAINER_MEM
+    expose:
+      - "3000"
+    labels:
+      service.name: 'web'
+      com.centurylinklabs.watchtower.lifecycle.post-update: './bin/sleep_20s.sh'
+    env_file:
+      - ./.env.workflow-manager.$PRODUCTION_ENV
+    logging:
+      driver: "json-file"
+      options:
+        max-file: '5'
+        max-size: '10m'
+
+  web_2:
+    image: index.docker.io/timpwbaker/hexarad_workflow_manager:$PRODUCTION_ENV
+    command: 'bundle exec rails s -b 0.0.0.0'
+    restart: always
+    deploy:
+      resources:
+        limits:
+          cpus: $WEB_CONTAINER_CPU
+          memory: $RAILS_CONTAINER_MEM
+    expose:
+      - "3000"
+    labels:
+      service.name: 'web'
+      com.centurylinklabs.watchtower.lifecycle.post-update: './bin/sleep_20s.sh'
+    env_file:
+      - ./.env.workflow-manager.$PRODUCTION_ENV
+    logging:
+      driver: "json-file"
+      options:
+        max-file: '5'
+        max-size: '10m'
+
+  web_3:
+    image: index.docker.io/timpwbaker/hexarad_workflow_manager:$PRODUCTION_ENV
+    command: 'bundle exec rails s -b 0.0.0.0'
+    restart: always
+    deploy:
+      resources:
+        limits:
+          cpus: $WEB_CONTAINER_CPU
+          memory: $RAILS_CONTAINER_MEM
+    expose:
+      - "3000"
+    labels:
+      service.name: 'web'
+      com.centurylinklabs.watchtower.lifecycle.post-update: './bin/sleep_20s.sh'
+    env_file:
+      - ./.env.workflow-manager.$PRODUCTION_ENV
+    logging:
+      driver: "json-file"
+      options:
+        max-file: '5'
+        max-size: '10m'
+
+  orders-portal-sidekiq:
+    image: index.docker.io/timpwbaker/hexarad_orders_portal:$PRODUCTION_ENV
+    command: 'bundle exec sidekiq -c 1'
+    restart: always
+    deploy:
+      resources:
+        limits:
+          cpus: $WORKER_CONTAINER_CPU
+          memory: $RAILS_CONTAINER_MEM
+    env_file:
+      - ./.env.orders-portal.$PRODUCTION_ENV
+    labels:
+      service.name: 'orders-portal-sidekiq'
+    logging:
+      driver: "json-file"
+      options:
+        max-file: '5'
+        max-size: '10m'
+
+  watchtower:
+    image: containrrr/watchtower
+    deploy:
+      resources:
+        limits:
+          cpus: '0.1'
+          memory: $WATCHTOWER_CONTAINER_MEM
+    restart: always
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - $HOME/.docker/config.json:/config.json:ro
+    command: --rolling-restart --cleanup
+    env_file:
+      - ./.env.workflow-manager.$PRODUCTION_ENV
+    environment:
+      WATCHTOWER_POLL_INTERVAL: 60
+      WATCHTOWER_LIFECYCLE_HOOKS: "true"
+    labels:
+      com.centurylinklabs.watchtower.enable: false
+      service.name: 'watchtower'
+    logging:
+      driver: "json-file"
+      options:
+        max-file: '5'
+        max-size: '10m'
+
+  newrelic-infra-agent:
+    image: newrelic/infrastructure:latest
+    cap_add:
+      - SYS_PTRACE
+    network_mode: host
+    pid: host
+    deploy:
+      resources:
+        limits:
+          cpus: '0.1'
+          memory: $NEW_RELIC_INFRA_CONTAINER_MEM
+    privileged: true
+    volumes:
+      - "/:/host:ro"
+      - "/var/run/docker.sock:/var/run/docker.sock"
+    restart: always
+    env_file:
+      - ./.env.workflow-manager.$PRODUCTION_ENV
+    labels:
+      com.centurylinklabs.watchtower.enable: false
+      service.name: 'newrelic-infra-agent'
+    logging:
+      driver: "json-file"
+      options:
+        max-file: '5'
+        max-size: '10m'
