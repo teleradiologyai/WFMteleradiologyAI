@@ -1,6 +1,6 @@
 TeleradiologyAI Workflow Manager Infrastructure
 
-+he TeleradiologyAI Workflow Manager Infrastructure is a powerful tool that streamlines the teleradiology workflow process, enabling radiologists to efficiently manage their workloads and increase productivity. This infrastructure leverages state-of-the-art AI and machine learning algorithms to automate and optimize various steps of the workflow, including image acquisition, interpretation, and report generation.
+The TeleradiologyAI Workflow Manager Infrastructure is a powerful tool that streamlines the teleradiology workflow process, enabling radiologists to efficiently manage their workloads and increase productivity. This infrastructure leverages state-of-the-art AI and machine learning algorithms to automate and optimize various steps of the workflow, including image acquisition, interpretation, and report generation.
 
 Features
 Efficient management of the teleradiology workflow process
